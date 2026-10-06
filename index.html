@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="color-scheme" content="dark">
+<title>Phase Simulator – Delay, Polarity & Comb Filter</title>
+<style>
+    :root {
+        --bg: #17181b; --panel: #232529; --panel2: #1b1c1f; --line: #3a3d44;
+        --text: #f2f2f2; --dim: #9aa0aa; --c1: #00e5ff; --c2: #ff7043;
+        --sum: #ffe066; --notch: #ff5252; --ok: #4caf50;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+        margin: 0; padding: 12px 16px; background: var(--bg); color: var(--text);
+        font-family: 'Segoe UI', 'Sarabun', Tahoma, sans-serif; line-height: 1.4; font-size: 14px;
+        overflow: hidden;
+    }
+    /* ทั้งหน้าอยู่ในหน้าจอเดียว ไม่ต้องเลื่อน (ถ้าหน้าต่างเตี้ยกว่า 700px จะเลื่อนได้) */
+    .wrap { height: 100%; min-height: 700px; display: flex; flex-direction: column; gap: 10px; }
+    [hidden] { display: none !important; }
+    button, input, canvas { -webkit-tap-highlight-color: transparent; }
+    button { -webkit-appearance: none; appearance: none; touch-action: manipulation; }
+    input[type=range] { height: 28px; }
+    .cv canvas { touch-action: pan-y; }
+
+
+    header { display: flex; align-items: center; gap: 16px; flex: none; }
+    header h1 { margin: 0; font-size: 22px; white-space: nowrap; }
+    header .sub { margin: 0; color: var(--dim); font-size: 13px; flex: 1; }
+
+    .card { background: var(--panel); border-radius: 10px; padding: 12px 14px; box-shadow: 0 4px 10px rgba(0,0,0,.35); min-width: 0; }
+    .card h3 { margin: 0 0 8px; font-size: 13px; color: var(--dim); font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: none; }
+    .stack { display: flex; flex-direction: column; gap: 8px; }
+
+    button {
+        font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--line);
+        background: #2e3036; color: var(--text); cursor: pointer;
+    }
+    button:hover { background: #393c44; }
+    button:focus-visible, input:focus-visible { outline: 2px solid var(--c1); outline-offset: 2px; }
+    #playBtn { background: #2e7d32; border-color: #2e7d32; }
+    #playBtn.on { background: #c62828; border-color: #c62828; }
+    #invertBtn.active { background: #ef6c00; border-color: #ef6c00; }
+    .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .seg button { border: 0; border-radius: 0; padding: 7px 12px; background: #2e3036; }
+    .seg button.sel { background: var(--c1); color: #00252b; }
+    label.lab { display: flex; justify-content: space-between; margin-bottom: 2px; }
+    label.lab b { color: var(--sum); font-variant-numeric: tabular-nums; }
+    input[type=range] { width: 100%; margin: 2px 0; accent-color: var(--c1); }
+    .small { font-size: 12px; color: var(--dim); }
+
+    .knobcol { display: flex; flex-direction: column; align-items: center; width: 104px; flex: none; }
+    .knobcol .cap { font-size: 11px; letter-spacing: .1em; color: var(--dim); font-weight: 600; }
+    #knob { width: 84px; height: 84px; cursor: ns-resize; touch-action: none; border-radius: 50%; }
+    .knobcol .val { font-size: 16px; font-weight: 700; color: var(--c2); font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .knobcol .hz { font-size: 11px; color: var(--dim); white-space: nowrap; }
+    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .stat { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; min-width: 0; }
+    .stat .k { font-size: 11px; color: var(--dim); }
+    .stat .v { font-size: 18px; font-weight: 700; color: var(--sum); font-variant-numeric: tabular-nums; }
+    .stat .n { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .verdict { margin-top: 8px; padding: 6px 12px; border-radius: 8px; background: var(--panel2); border-left: 4px solid var(--ok); }
+    .verdict.bad { border-left-color: var(--notch); }
+    .verdict.mid { border-left-color: var(--sum); }
+
+    .graphs { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .graphs .card { display: flex; flex-direction: column; min-height: 0; }
+    .cv { position: relative; flex: 1; min-height: 0; }
+    .cv canvas { position: absolute; inset: 0; width: 100%; height: 100%; background: #0a0b0d; cursor: crosshair; border-radius: 8px; display: block; }
+    .tools { display: flex; gap: 8px; align-items: center; }
+    .seg.sm button { padding: 3px 9px; font-size: 12px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; font-weight: 400; }
+    .legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+
+    /* ทฤษฎี (หน้าต่างลอย) */
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; z-index: 10; padding: 20px; }
+    .modal.open { display: flex; }
+    .modal .box { background: var(--panel); border-radius: 12px; padding: 20px 26px; max-width: 760px; max-height: 90vh; overflow: auto; }
+    .modal h2 { margin: 0 0 8px; font-size: 18px; }
+    .modal li { margin-bottom: 4px; color: #d6d9df; }
+    code, .f { background: #111; padding: 1px 6px; border-radius: 4px; color: var(--sum); }
+    /* โทรศัพท์ / หน้าต่างเล็ก: เรียงเป็นคอลัมน์เดียวและเลื่อนลงได้ */
+    @media (max-width: 900px), (max-height: 760px) {
+        html, body { height: auto; }
+        body { overflow: auto; padding: 10px 12px calc(18px + env(safe-area-inset-bottom)); }
+        .wrap { height: auto; min-height: 0; }
+        header { flex-wrap: wrap; gap: 8px; }
+        header h1 { font-size: 20px; }
+        header .sub { display: none; }
+        header { justify-content: space-between; }
+        .controls, .graphs { grid-template-columns: 1fr; }
+        .stats { grid-template-columns: repeat(2, 1fr); }
+        .graphs .card { display: block; }
+        .cv { height: 300px; flex: none; }
+        .cv.tall { height: 400px; }
+        .card h3 { flex-wrap: wrap; }
+        .knobrow { gap: 12px !important; }
+        .pair { flex-direction: column; align-items: stretch !important; gap: 6px !important; }
+        .pair > div { flex: none !important; width: 100%; }
+        .knobrow > .stack { align-self: stretch; }
+        .stat .n { white-space: normal; }
+    }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <h1>Phase Simulator</h1>
+        <p class="sub">ดูและฟังว่า Delay และ Polarity ของ Mic 2 ส่งผลต่อเสียงรวมอย่างไร</p>
+        <button id="theoryBtn">📘 ทฤษฎีย่อ</button>
+    </header>
+
+    <!-- ===== ตัวควบคุม ===== -->
+    <section class="controls">
+        <div class="card">
+            <h3>1) แหล่งเสียง</h3>
+            <div class="stack">
+                <div class="row">
+                    <div class="seg" id="srcSeg" role="group" aria-label="แหล่งเสียง">
+                        <button data-src="sine" class="sel">Sine (โทนเดียว)</button>
+                        <button data-src="snare">Snare</button>
+                        <button data-src="noise">White Noise</button>
+                    </div>
+                    <button id="playBtn">▶ เล่นเสียง</button>
+                    <div class="seg" id="listenSeg" role="group" aria-label="เลือกฟัง">
+                        <button data-l="1">Mic 1</button>
+                        <button data-l="2">Mic 2</button>
+                        <button data-l="sum" class="sel">ผลรวม</button>
+                    </div>
+                </div>
+                <div class="small" id="iosHint" hidden>📱 iPhone: ถ้าไม่ได้ยินเสียง ให้ปิดโหมดเงียบ (สวิตช์ข้างเครื่อง) และเพิ่มเสียง หรือใช้หูฟัง</div>
+                <div id="freqBox">
+                    <label class="lab" for="freqSlider">ความถี่ของโทน <b><span id="freqVal">500</span> Hz</b></label>
+                    <input type="range" id="freqSlider" min="0" max="1000" step="1" value="500">
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>2) ปรับ Mic 2</h3>
+            <div class="row knobrow" style="flex-wrap: nowrap; gap: 18px; align-items: center;">
+                <div class="stack" style="flex: 1; min-width: 0;">
+                    <div class="row pair" style="flex-wrap: nowrap; gap: 20px;">
+                        <div style="flex: 1; min-width: 0;">
+                            <label class="lab" for="delaySlider">Time Delay <b><span id="delayVal">0.00</span> ms</b></label>
+                            <input type="range" id="delaySlider" min="0" max="10" step="0.05" value="0">
+                        </div>
+                        <div style="flex: 1; min-width: 0;">
+                            <label class="lab" for="levelSlider">ระดับเสียง <b><span id="levelVal">100</span> %</b></label>
+                            <input type="range" id="levelSlider" min="0" max="100" step="1" value="100">
+                        </div>
+                    </div>
+                    <div class="row">
+                        <button id="invertBtn">Ø Invert Polarity (Mic 2)</button>
+                        <span class="small" id="distNote"></span>
+                    </div>
+                </div>
+                <div class="knobcol">
+                    <div class="cap">PHASE</div>
+                    <canvas id="knob" tabindex="0" role="slider" aria-label="Phase (องศา)" aria-valuemin="0" aria-valuemax="180" aria-valuenow="0" title="ลากขึ้น/ลง · ล้อเมาส์ · ดับเบิลคลิก = 0°"></canvas>
+                    <div class="val" id="phVal">0.0°</div>
+                    <div class="hz" id="phHz"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== ผลลัพธ์ ===== -->
+    <section class="card" style="flex: none;">
+        <div class="stats">
+            <div class="stat"><div class="k">Delay เทียบเท่าระยะทาง</div><div class="v" id="stDist">0 cm</div><div class="n">ความเร็วเสียง 343 m/s</div></div>
+            <div class="stat"><div class="k">Notch แรก (หักล้าง)</div><div class="v" id="stNotch">–</div><div class="n" id="stNotchN"></div></div>
+            <div class="stat"><div class="k">เฟสต่างกัน ที่ความถี่โทน</div><div class="v" id="stPhase">–</div><div class="n" id="stPhaseN">เลือกแหล่งเสียง Sine</div></div>
+            <div class="stat"><div class="k">ระดับผลรวม ที่ความถี่โทน</div><div class="v" id="stLevel">–</div><div class="n" id="stLevelN">เทียบกับ Mic 1 ตัวเดียว</div></div>
+        </div>
+        <div class="verdict" id="verdict"></div>
+    </section>
+
+    <section class="graphs">
+        <div class="card">
+            <h3>รูปคลื่นในเวลา
+                <span class="tools">
+                    <span class="seg sm" id="winSeg" role="group" aria-label="ช่วงเวลา">
+                        <button data-w="5">5 ms</button><button data-w="10">10 ms</button><button data-w="20" class="sel">20 ms</button><button data-w="50">50 ms</button>
+                    </span>
+                    <span class="seg sm" id="viewSeg" role="group" aria-label="รูปแบบ">
+                        <button data-v="lanes" class="sel">แยกเลน</button><button data-v="overlay">ซ้อนทับ</button>
+                    </span>
+                </span>
+            </h3>
+            <div class="cv"><canvas id="scope"></canvas></div>
+        </div>
+        <div class="card">
+            <h3>ตอบสนองความถี่ &amp; เฟส <span class="small" style="font-weight: 400;">แตะ/เลื่อนบนกราฟเพื่ออ่านค่า</span></h3>
+            <div class="cv tall"><canvas id="resp"></canvas></div>
+        </div>
+    </section>
+</div>
+
+<div class="modal" id="theory">
+    <div class="box" role="dialog" aria-label="ทฤษฎีย่อ">
+        <h2>📘 ทฤษฎีย่อ</h2>
+        <ul>
+            <li><b>Polarity ≠ Phase</b> – ปุ่ม Ø (Invert) คือการ "กลับขั้ว" คูณสัญญาณด้วย −1 เท่ากันทุกความถี่ ส่วน Time Delay ทำให้เฟสเลื่อนไม่เท่ากันในแต่ละความถี่ (ยิ่งถี่ ยิ่งเลื่อนมาก)</li>
+            <li>เฟสที่ต่างกัน: <span class="f">φ = 360° × f × t</span> (t เป็นวินาที) เมื่อ φ = 180° สัญญาณหักล้างกัน, φ = 360° สัญญาณเสริมกัน</li>
+            <li>ไม่ Invert: notch ที่ <span class="f">f = (2k+1) / 2t</span> → 1/2t, 3/2t, 5/2t …</li>
+            <li>Invert + Delay: notch ที่ <span class="f">f = k / t</span> → 1/t, 2/t, 3/t … และความถี่ต่ำมากถูกตัดด้วย</li>
+            <li>ผลรวมของสองสัญญาณ (ระดับ Mic 2 = g): <span class="f">|H(f)| = √(1 + g² ± 2g·cos(2πft))</span> (+ ไม่ Invert, − Invert)</li>
+            <li><b>ปุ่มหมุน PHASE (0–180°)</b> – เหมือนปุ่ม Phase ใน Align &amp; Clean: Mic 2 ผ่าน all-pass อันดับ 1 ที่ไม่เปลี่ยนระดับเสียง แต่หมุนเฟส ปุ่มเลื่อน "ความถี่มุม" ของฟิลเตอร์ (0° = ใกล้ Nyquist แทบไม่หมุน, 180° = 20 Hz หมุนเกือบ 180° ตลอดย่านกลาง–สูง) ที่ความถี่มุมเฟสหมุน 90° พอดี (ตัวเลข "90° @ … Hz" ใต้ปุ่ม) เฟสหมุน 0° ที่ความถี่ต่ำมาก และเข้าใกล้ 180° ที่ความถี่สูง จึงต่างจาก Invert ที่กลับ 180° เท่ากันทุกความถี่ และต่างจาก Delay ที่เฟสเพิ่มเป็นเส้นตรงตามความถี่</li>
+            <li>ระยะทาง ↔ เวลา: เสียงเดินทาง ≈ 34.3 cm ต่อ 1 ms</li>
+            <li>ตัวอย่างใช้งานจริง: Snare Top/Bottom มักกลับขั้ว Mic ล่าง เพราะหนังกลองสองด้านขยับสวนทางกัน; Overhead ที่ห่างจาก Close-mic จะหน่วงกัน ต้องเช็คเฟสก่อนผสม</li>
+            <li>การลดระดับ Mic 2 ทำให้ notch ตื้นลง (ไมค์จริงมักดังไม่เท่ากัน) ลองลดระดับแล้วดูกราฟ</li>
+        </ul>
+        <p class="small">ข้อจำกัดของโมเดล: จำลองไมค์ 2 ตัวรับสัญญาณเดียวกันที่ระดับต่างกันเล็กน้อย ไม่รวมห้อง เสียงสะท้อน หรือการรั่วของเสียงข้ามไมค์</p>
+        <button id="theoryClose">ปิด</button>
+    </div>
+</div>
+
+<script>
+(() => {
+    const SPEED = 343;               // m/s
+    const $ = id => document.getElementById(id);
+
+    // ---------- สถานะ ----------
+    const S = { src: 'sine', freq: 500, delayMs: 0, inverted: false, level: 1, phase: 0, listen: 'sum', playing: false, win: 20, view: 'lanes' };
+
+    // ---------- ตัวช่วย ----------
+    const fmtHz = f => f >= 1000 ? (f / 1000).toFixed(2).replace(/\.?0+$/, '') + ' kHz' : Math.round(f) + ' Hz';
+    const sliderToFreq = v => 50 * Math.pow(100, v / 1000);            // 50 – 5000 Hz
+    const freqToSlider = f => 1000 * Math.log(f / 50) / Math.log(100);
+    const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+    // ---------- แหล่งเสียงสำหรับวาดกราฟ (คำนวณเอง ไม่ขึ้นกับ Audio) ----------
+    const FS = 48000;
+    function mulberry32(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+    const rnd = mulberry32(12345);
+    const NOISE_PRE = 0.06;                                            // ให้ noise มีก่อน t=0 เพื่อให้ delay เห็นชัด
+    const noiseArr = Float32Array.from({ length: Math.round((NOISE_PRE + 0.06) * FS) }, () => rnd() * 2 - 1);
+    const snareArr = (() => {
+        const n = Math.round(0.08 * FS), a = new Float32Array(n);
+        const nz = Float32Array.from({ length: n + 1 }, () => rnd() * 2 - 1);
+        let ph = 0, peak = 0;
+        for (let i = 0; i < n; i++) {
+            const t = i / FS;
+            const f = t < 0.1 ? 250 * Math.pow(0.4, t / 0.1) : 100;
+            ph += f / FS;
+            const tri = 4 * Math.abs(ph - Math.floor(ph + 0.5)) - 1;
+            const body = tri * Math.pow(0.01, t / 0.15);
+            const hp = (nz[i + 1] - nz[i]) * 0.6 * Math.pow(0.01, t / 0.2);
+            a[i] = body * 0.8 + hp;
+            peak = Math.max(peak, Math.abs(a[i]));
+        }
+        for (let i = 0; i < n; i++) a[i] /= peak;
+        return a;
+    })();
+    function srcAt(t) {
+        if (S.src === 'sine') return Math.sin(2 * Math.PI * S.freq * t);
+        if (S.src === 'noise') { const i = Math.round((t + NOISE_PRE) * FS); return i >= 0 && i < noiseArr.length ? noiseArr[i] : 0; }
+        const i = Math.round(t * FS); return i >= 0 && i < snareArr.length ? snareArr[i] : 0;
+    }
+
+    // ---------- คณิตศาสตร์ Comb Filter ----------
+    const pol = () => S.inverted ? -1 : 1;
+    const toDb = x => 20 * Math.log10(Math.max(x, 1e-4));
+    // ปุ่ม Phase (0..180) → ความถี่มุมของ first-order all-pass (สูตรเดียวกับ Align & Clean, alignfilters::phaseCornerHz)
+    const phaseCorner = (v, fs) => 20 * Math.pow((fs / 2 - 100) / 20, 1 - v / 180);
+    const apOn = () => S.phase > 0;
+    function apTheta(f) {              // เฟสของ all-pass (เรเดียน, ≤ 0): 0 ที่ DC → −π ที่ Nyquist, −π/2 ที่ความถี่มุม
+        if (!apOn()) return 0;
+        const k = Math.tan(Math.PI * phaseCorner(S.phase, FS) / FS);
+        return -2 * Math.atan(Math.tan(Math.PI * f / FS) / k);
+    }
+    function phi2(f) {                 // เฟสของ Mic 2 เทียบ Mic 1 = delay + all-pass + กลับขั้ว
+        return -2 * Math.PI * f * S.delayMs / 1000 + apTheta(f) + (S.inverted ? Math.PI : 0);
+    }
+    function gainAt(f) {               // |1 + g·e^{jφ2}|
+        const g = S.level;
+        return Math.sqrt(Math.max(1 + g * g + 2 * g * Math.cos(phi2(f)), 0));
+    }
+    function notchList(max = 4) {      // ความถี่ที่เฟสต่างกัน 180° (φ2 = π + 2πk) ในช่วง 20 Hz – 20 kHz
+        const out = [], N = 4000, f0 = 20, f1 = 20000, TP = 2 * Math.PI;
+        const q = f => Math.floor((phi2(f) - Math.PI) / TP);
+        let fPrev = f0, kPrev = q(f0);
+        for (let i = 1; i <= N && out.length < max; i++) {
+            const f = f0 * Math.pow(f1 / f0, i / N), k = q(f);
+            if (k !== kPrev) {
+                let lo = fPrev, hi = f;
+                for (let j = 0; j < 30; j++) { const m = (lo + hi) / 2; q(m) === kPrev ? lo = m : hi = m; }
+                out.push((lo + hi) / 2);
+            }
+            fPrev = f; kPrev = k;
+        }
+        return out;
+    }
+    function minGain() {               // จุดที่ผลรวมต่ำสุดในย่านได้ยิน
+        let best = { g: Infinity, f: 20 };
+        for (let i = 0; i <= 600; i++) { const f = 20 * Math.pow(1000, i / 600), g = gainAt(f); if (g < best.g) best = { g, f }; }
+        return best;
+    }
+    // ---------- Canvas ----------
+    function fit(c) {
+        const dpr = window.devicePixelRatio || 1, r = c.getBoundingClientRect();
+        c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
+        const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        return { ctx, W: r.width, H: r.height };
+    }
+
+    // ======================= กราฟ =======================
+    const COL = { c1: cssVar('--c1'), c2: cssVar('--c2'), sum: cssVar('--sum'), notch: cssVar('--notch') };
+    const FONT = '"Segoe UI","Sarabun",system-ui,sans-serif';
+    const SCOPE_PRE = NOISE_PRE;
+    let scopeHover = null, respHover = null;
+    const sgn = (v, d = 0) => (v > 0.0005 ? '+' : v < -0.0005 ? '−' : '') + Math.abs(v).toFixed(d);
+    function rr(c, x, y, w, h, r) {
+        c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+        c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+    }
+    function panel(c, x, y, w, h) {
+        const g = c.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, '#0e1013'); g.addColorStop(1, '#08090b');
+        rr(c, x, y, w, h, 6); c.fillStyle = g; c.fill(); c.strokeStyle = '#262a30'; c.lineWidth = 1; c.stroke();
+    }
+    function pill(c, x, y, parts, align = 'left') {      // ป้ายข้อความเล็ก ๆ บนกราฟ  parts = [{t, col, bold, dot}]
+        c.font = '12px ' + FONT;
+        const ms = parts.map(p => { c.font = (p.bold ? '600 ' : '') + '12px ' + FONT; return (p.dot ? 14 : 0) + c.measureText(p.t).width + 8; });
+        const tw = ms.reduce((a, b) => a + b, 0) + 4, x0 = align === 'right' ? x - tw : x;
+        rr(c, x0, y, tw, 20, 5); c.fillStyle = 'rgba(8,9,11,.82)'; c.fill();
+        let cx = x0 + 6; c.textBaseline = 'middle'; c.textAlign = 'left';
+        parts.forEach((p, i) => {
+            if (p.dot) { c.fillStyle = p.col; c.beginPath(); c.arc(cx + 4, y + 10, 4, 0, 7); c.fill(); cx += 14; }
+            c.font = (p.bold ? '600 ' : '') + '12px ' + FONT; c.fillStyle = p.tc || (p.dot ? '#e8eaee' : p.col || '#9aa0aa');
+            c.fillText(p.t, cx, y + 10.5); cx += ms[i] - (p.dot ? 14 : 0);
+        });
+        c.textBaseline = 'alphabetic';
+    }
+    function tip(c, W, x, y, lines) {                      // กล่อง tooltip ตามเมาส์
+        c.font = '12px ' + FONT;
+        const bw = Math.max(...lines.map(l => c.measureText(l.t).width)) + 18, bh = lines.length * 17 + 10;
+        let px = x + 14; if (px + bw > W - 4) px = x - 14 - bw;
+        rr(c, px, y, bw, bh, 6); c.fillStyle = 'rgba(18,20,24,.95)'; c.fill(); c.strokeStyle = '#3a3e46'; c.stroke();
+        c.textAlign = 'left'; lines.forEach((l, i) => { c.fillStyle = l.col || '#e8eaee'; c.fillText(l.t, px + 9, y + 18 + i * 17); });
+    }
+    function mic2Desc() {
+        const p = [];
+        if (S.delayMs > 0) p.push('หน่วง ' + S.delayMs.toFixed(2) + ' ms');
+        if (S.inverted) p.push('Ø กลับขั้ว');
+        if (apOn()) p.push('all-pass ' + S.phase.toFixed(0) + '°');
+        if (S.level < 0.999) p.push(Math.round(S.level * 100) + '%');
+        return p.length ? p.join(' · ') : 'ไม่ได้ปรับอะไร';
+    }
+    function renderMic2() {            // จำลอง Mic 2 ทีละ sample: delay → all-pass → กลับขั้ว × ระดับ
+        const tau = S.delayMs / 1000, g = S.level, p = pol();
+        const N = Math.round((SCOPE_PRE + S.win / 1000) * FS), y = new Float32Array(N);
+        let a = 0, st = 0;
+        const ap = apOn();
+        if (ap) { const k = Math.tan(Math.PI * phaseCorner(S.phase, FS) / FS); a = (k - 1) / (k + 1); }
+        for (let n = 0; n < N; n++) {
+            const x = g * p * srcAt(-SCOPE_PRE + n / FS - tau);
+            if (ap) { const v = a * x + st; st = x - a * v; y[n] = v; } else y[n] = x;
+        }
+        return y;
+    }
+    function makeSignals() {
+        const g = S.level, m1 = t => srcAt(t);
+        let m2;
+        if (S.src === 'sine') { const ph = phi2(S.freq); m2 = t => g * Math.sin(2 * Math.PI * S.freq * t + ph); }
+        else { const y = renderMic2(); m2 = t => y[Math.min(y.length - 1, Math.max(0, Math.round((t + SCOPE_PRE) * FS)))]; }
+        return { m1, m2, sum: t => m1(t) + m2(t) };
+    }
+
+    // ---------- รูปคลื่น ----------
+    function drawScope() {
+        const { ctx: c, W, H } = fit($('scope'));
+        c.clearRect(0, 0, W, H);
+        const win = S.win / 1000, tau = S.delayMs / 1000, sg = makeSignals();
+        const narrow = W < 480, L = narrow ? 40 : 50, R = 12, T = 8, B = 26, gap = 8, w = W - L - R;
+        const lanes = S.view === 'lanes'
+            ? [{ fn: sg.m1, col: COL.c1, max: 1, wgt: 1 }, { fn: sg.m2, col: COL.c2, max: 1, wgt: 1 }, { fn: sg.sum, col: COL.sum, max: 2, wgt: 1.3, fill: true }]
+            : [{ max: 2, wgt: 1 }];
+        const totalH = H - T - B - gap * (lanes.length - 1), wsum = lanes.reduce((a, l) => a + l.wgt, 0);
+        let yy = T;
+        lanes.forEach(l => { l.y = yy; l.h = totalH * l.wgt / wsum; l.cy = l.y + l.h / 2; l.half = l.h / 2 - 5; yy += l.h + gap; });
+        const bottom = yy - gap, xOf = t => L + t / win * w, step = { 5: 1, 10: 1, 20: 2, 50: 5 }[S.win];
+        const yOfL = (l, v) => l.cy - v / (l.max * 1.3) * l.half;      // เผื่อที่ว่างด้านบน/ล่างให้ป้ายชื่อ
+        const n = Math.min(4000, Math.floor(w * (S.src === 'sine' ? 4 : 2)));
+        const trace = (l, fn, col, lw, fill, glow) => {
+            c.save(); c.lineJoin = 'round'; c.lineWidth = lw; c.strokeStyle = col;
+            c.beginPath();
+            for (let i = 0; i <= n; i++) { const x = L + i / n * w, y = yOfL(l, fn(i / n * win)); i ? c.lineTo(x, y) : c.moveTo(x, y); }
+            if (glow && S.src === 'sine') { c.save(); c.globalAlpha = 0.18; c.lineWidth = lw * 3.5; c.stroke(); c.restore(); }
+            c.stroke();
+            if (fill && S.src === 'sine') { c.lineTo(L + w, l.cy); c.lineTo(L, l.cy); c.closePath(); c.fillStyle = 'rgba(255,224,102,.10)'; c.fill(); }
+            c.restore();
+        };
+
+        lanes.forEach(l => {
+            panel(c, L, l.y, w, l.h);
+            c.save(); rr(c, L, l.y, w, l.h, 6); c.clip();
+            for (let ms = 0; ms <= S.win + 1e-9; ms += step) {               // เส้นเวลา
+                const x = xOf(ms / 1000); c.strokeStyle = ms === 0 ? '#2e323a' : '#1a1d22'; c.lineWidth = 1;
+                c.beginPath(); c.moveTo(x, l.y); c.lineTo(x, l.y + l.h); c.stroke();
+            }
+            [-1, -0.5, 0, 0.5, 1].forEach(k => {                            // เส้นระดับ
+                const y = yOfL(l, k * l.max); c.strokeStyle = k === 0 ? '#3a3e46' : '#1a1d22';
+                c.beginPath(); c.moveTo(L, y); c.lineTo(L + w, y); c.stroke();
+            });
+            if (tau > 0 && tau < win) {                                        // เครื่องหมาย delay
+                const x = xOf(tau); c.setLineDash([5, 4]); c.strokeStyle = 'rgba(255,255,255,.5)';
+                c.beginPath(); c.moveTo(x, l.y); c.lineTo(x, l.y + l.h); c.stroke(); c.setLineDash([]);
+            }
+            if (l.fn) trace(l, l.fn, l.col, l === lanes[2] ? 2.2 : 1.5, l.fill, l === lanes[2]);
+            else { trace(l, sg.m1, COL.c1, 1.3); trace(l, sg.m2, COL.c2, 1.3); trace(l, sg.sum, COL.sum, 2.2, false, true); }
+            c.restore();
+            c.font = '11px ' + FONT; c.fillStyle = '#8d94a0'; c.textAlign = 'right';   // แกนแนวตั้ง
+            [l.max, 0, -l.max].forEach(v => c.fillText(v === 0 ? '0' : sgn(v), L - 7, yOfL(l, v) + 4));
+        });
+        c.font = '11px ' + FONT; c.fillStyle = '#8d94a0'; c.textAlign = 'center';          // แกนเวลา
+        for (let ms = 0; ms <= S.win + 1e-9; ms += step) c.fillText(String(ms), xOf(ms / 1000), bottom + 16);
+        c.textAlign = 'right'; c.fillText('ms', L - 7, bottom + 16);
+
+        // ป้ายชื่อ + RMS ของผลรวมเทียบ Mic 1
+        let s1 = 0, s2 = 0;
+        for (let i = 0; i < n; i++) { const t = i / n * win, a = sg.m1(t), b = sg.sum(t); s1 += a * a; s2 += b * b; }
+        const rel = s1 > 1e-9 ? 10 * Math.log10(Math.max(s2, 1e-12) / s1) : null;
+        const relTxt = rel === null ? '' : sgn(rel, 1) + ' dB เทียบ Mic 1';
+        if (S.view === 'lanes') {
+            pill(c, L + 8, lanes[0].y + 6, [{ dot: 1, col: COL.c1, t: 'Mic 1', bold: 1 }, ...(narrow ? [] : [{ t: 'อ้างอิง' }])]);
+            pill(c, L + 8, lanes[1].y + 6, [{ dot: 1, col: COL.c2, t: 'Mic 2', bold: 1 }, ...(narrow ? [] : [{ t: mic2Desc() }])]);
+            pill(c, L + 8, lanes[2].y + 6, [{ dot: 1, col: COL.sum, t: 'ผลรวม', bold: 1 }, ...(narrow ? [] : [{ t: 'สิ่งที่ได้ยิน · สเกล ±2' }])]);
+            if (relTxt) pill(c, L + w - 8, lanes[2].y + 6, [{ t: relTxt, col: rel > 0.5 ? '#7bd88f' : rel < -3 ? '#ff7b7b' : '#e8eaee', bold: 1 }], 'right');
+        } else {
+            pill(c, L + 8, lanes[0].y + 6, [{ dot: 1, col: COL.c1, t: 'Mic 1' }, { dot: 1, col: COL.c2, t: 'Mic 2' }, { dot: 1, col: COL.sum, t: 'ผลรวม' }]);
+            if (relTxt) pill(c, L + w - 8, lanes[0].y + 6, [{ t: relTxt, col: rel > 0.5 ? '#7bd88f' : rel < -3 ? '#ff7b7b' : '#e8eaee', bold: 1 }], 'right');
+        }
+        if (tau > 0 && tau < win) pill(c, Math.min(xOf(tau) + 5, L + w - 78), lanes[0].y + (S.view === 'lanes' ? lanes[0].h - 26 : 32), [{ t: 'τ = ' + S.delayMs.toFixed(2) + ' ms', col: '#fff' }]);
+
+        // เคอร์เซอร์
+        if (scopeHover !== null && scopeHover >= L && scopeHover <= L + w) {
+            const x = scopeHover, t = (x - L) / w * win;
+            c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1; c.beginPath(); c.moveTo(x, T); c.lineTo(x, bottom); c.stroke();
+            const v1 = sg.m1(t), v2 = sg.m2(t), vs = v1 + v2;
+            const dots = S.view === 'lanes' ? [[lanes[0], v1, COL.c1], [lanes[1], v2, COL.c2], [lanes[2], vs, COL.sum]] : [[lanes[0], v1, COL.c1], [lanes[0], v2, COL.c2], [lanes[0], vs, COL.sum]];
+            dots.forEach(([l, v, col]) => { c.fillStyle = col; c.strokeStyle = '#000'; c.beginPath(); c.arc(x, yOfL(l, Math.max(-l.max, Math.min(l.max, v))), 4, 0, 7); c.fill(); c.stroke(); });
+            tip(c, W, x, T + 30, [{ t: 't = ' + (t * 1000).toFixed(2) + ' ms', col: '#9aa0aa' }, { t: 'Mic 1   ' + sgn(v1, 2), col: COL.c1 }, { t: 'Mic 2   ' + sgn(v2, 2), col: COL.c2 }, { t: 'ผลรวม  ' + sgn(vs, 2), col: COL.sum }]);
+        }
+    }
+
+    // ---------- ตอบสนองความถี่ + เฟส ----------
+    const wrapDeg = r => { const d = ((r * 180 / Math.PI + 180) % 360 + 360) % 360 - 180; return d === -180 ? 180 : d; };
+    function drawResp() {
+        const { ctx: c, W, H } = fit($('resp'));
+        c.clearRect(0, 0, W, H);
+        const narrow = W < 480, L = narrow ? 46 : 56, R = 12, T = 8, B = 26, gap = 14, w = W - L - R;
+        const totalH = H - T - B - gap, hm = totalH * 0.58, hp = totalH - hm, my = T, py = T + hm + gap;
+        const DB_MAX = 14, DB_MIN = -36, fMin = 20, fMax = 20000, lg = Math.log10;
+        const xOf = f => L + (lg(f) - lg(fMin)) / (lg(fMax) - lg(fMin)) * w;
+        const fOf = x => fMin * Math.pow(fMax / fMin, (x - L) / w);
+        const yM = d => my + (DB_MAX - Math.max(Math.min(d, DB_MAX), DB_MIN)) / (DB_MAX - DB_MIN) * hm;
+        const yP = d => py + (250 - d) / 500 * hp;                    // ช่วง ±250° เผื่อที่ว่างให้ป้ายชื่อ
+        const freqGrid = fn => { for (const dec of [10, 100, 1000, 10000]) for (let m = 1; m < 10; m++) { const f = m * dec; if (f >= fMin && f <= fMax) fn(f, m === 1 || m === 2 || m === 5); } };
+        const panels = [[my, hm], [py, hp]];
+        panels.forEach(([y, h]) => panel(c, L, y, w, h));
+
+        // กริด
+        panels.forEach(([y, h]) => {
+            c.save(); rr(c, L, y, w, h, 6); c.clip(); c.lineWidth = 1;
+            freqGrid((f, major) => { const x = xOf(f); c.strokeStyle = major ? '#22262c' : '#14161a'; c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + h); c.stroke(); });
+            c.restore();
+        });
+        c.save(); rr(c, L, my, w, hm, 6); c.clip();
+        [6, 0, -6, -12, -24, -36].forEach(d => { c.strokeStyle = d === 0 ? '#4a4f58' : '#1a1d22'; c.beginPath(); c.moveTo(L, yM(d)); c.lineTo(L + w, yM(d)); c.stroke(); });
+        c.restore();
+        c.save(); rr(c, L, py, w, hp, 6); c.clip();
+        [90, 0, -90].forEach(d => { c.strokeStyle = d === 0 ? '#4a4f58' : '#1a1d22'; c.beginPath(); c.moveTo(L, yP(d)); c.lineTo(L + w, yP(d)); c.stroke(); });
+        c.setLineDash([6, 4]); c.strokeStyle = 'rgba(255,82,82,.55)';                 // ±180° = หักล้างกันพอดี
+        [180, -180].forEach(d => { c.beginPath(); c.moveTo(L, yP(d)); c.lineTo(L + w, yP(d)); c.stroke(); });
+        c.setLineDash([]); c.restore();
+
+        // แกน
+        c.font = '11px ' + FONT; c.textAlign = 'right';
+        [6, 0, -6, -12, -24, -36].forEach(d => { c.fillStyle = '#8d94a0'; c.fillText(sgn(d) + (d === 6 ? ' dB' : ''), L - 7, yM(d) + 4); });
+        [180, 90, 0, -90, -180].forEach(d => { c.fillStyle = Math.abs(d) === 180 ? '#ff8a8a' : '#8d94a0'; c.fillText(sgn(d) + '°', L - 7, yP(d) + 4); });
+        c.textAlign = 'center';
+        freqGrid((f, major) => { if (major) { c.fillStyle = '#8d94a0'; c.fillText(f >= 1000 ? f / 1000 + 'k' : f, xOf(f), py + hp + 16); } });
+        c.textAlign = 'right'; c.fillStyle = '#8d94a0'; c.fillText('Hz', L - 7, py + hp + 16);
+
+        // notch
+        const nl = notchList(40);
+        c.save(); c.setLineDash([3, 4]); c.strokeStyle = 'rgba(255,82,82,.7)'; c.lineWidth = 1;
+        nl.forEach(f => { const x = xOf(f); panels.forEach(([y, h]) => { c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + h); c.stroke(); }); });
+        c.restore();
+
+        // --- ระดับผลรวม ---
+        const n = Math.floor(w * 2), pts = [];
+        for (let i = 0; i <= n; i++) { const f = fMin * Math.pow(fMax / fMin, i / n); pts.push([L + i / n * w, yM(toDb(gainAt(f)))]); }
+        const curve = () => { c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); };
+        const y0 = yM(0);
+        c.save(); rr(c, L, my, w, hm, 6); c.clip();
+        curve(); c.lineTo(L + w, y0); c.lineTo(L, y0); c.closePath();
+        c.save(); c.beginPath(); c.rect(L, my, w, y0 - my); c.clip(); c.fillStyle = 'rgba(76,175,80,.20)'; c.fill(); c.restore();    // เสริมกัน
+        c.save(); c.beginPath(); c.rect(L, y0, w, my + hm - y0); c.clip(); c.fillStyle = 'rgba(255,82,82,.12)'; c.fill(); c.restore(); // หักล้าง
+        curve(); c.lineJoin = 'round'; c.strokeStyle = COL.sum; c.save(); c.globalAlpha = 0.18; c.lineWidth = 8; c.stroke(); c.restore(); c.lineWidth = 2.4; c.stroke();
+        c.restore();
+
+        // --- เฟส ---
+        const wrapPath = (stepsN) => {
+            c.beginPath(); let prev = null;
+            for (let i = 0; i <= stepsN; i++) {
+                const f = fMin * Math.pow(fMax / fMin, i / stepsN), d = wrapDeg(phi2(f)), x = L + i / stepsN * w, y = yP(d);
+                if (prev === null || Math.abs(d - prev) > 180) c.moveTo(x, y); else c.lineTo(x, y);
+                prev = d;
+            }
+        };
+        c.save(); rr(c, L, py, w, hp, 6); c.clip(); c.lineJoin = 'round';
+        wrapPath(9000); c.lineWidth = 1.3; c.strokeStyle = 'rgba(225,232,245,.7)'; c.stroke();                                   // เฟสรวม
+        c.beginPath(); for (let i = 0; i <= n; i++) { const f = fMin * Math.pow(fMax / fMin, i / n), x = L + i / n * w, y = yP(apTheta(f) * 180 / Math.PI); i ? c.lineTo(x, y) : c.moveTo(x, y); }
+        c.strokeStyle = COL.c2; c.save(); c.globalAlpha = 0.18; c.lineWidth = 9; c.stroke(); c.restore(); c.lineWidth = 2.8; c.stroke();      // all-pass
+        c.restore();
+        if (apOn()) {                                                       // จุดที่เฟสหมุน 90° (ความถี่มุม)
+            const fc = phaseCorner(S.phase, FS), x = xOf(fc), y = yP(-90);
+            c.fillStyle = COL.c2; c.strokeStyle = '#000'; c.beginPath(); c.arc(x, y, 5, 0, 7); c.fill(); c.stroke();
+            pill(c, Math.min(x + 8, L + w - 118), y - 28, [{ t: '−90° @ ' + fmtHz(fc), col: COL.c2, bold: 1 }]);
+        }
+
+        // ป้ายชื่อแผง
+        pill(c, L + 8, my + 6, [{ t: narrow ? 'ระดับผลรวม (dB)' : 'ระดับผลรวม (dB เทียบ Mic 1)', col: COL.sum, bold: 1 }]);
+        if (!narrow) pill(c, L + w - 8, my + 6, [{ t: 'เสริมกัน', col: '#7bd88f' }, { t: 'หักล้าง', col: '#ff7b7b' }, { t: 'notch', col: COL.notch }], 'right');
+        pill(c, L + 8, py + 6, [{ dot: 1, col: COL.c2, t: narrow ? 'all-pass' : 'all-pass (ปุ่ม PHASE)' }, { dot: 1, col: '#d9e0ee', t: narrow ? 'เฟสรวม' : 'เฟสรวมของ Mic 2' }]);
+        if (!narrow) pill(c, L + w - 8, py + 6, [{ t: '±180° = หักล้างกัน', col: '#ff8a8a' }], 'right');
+        let lastX = -99;                                                    // ค่า notch
+        nl.slice(0, 6).forEach(f => { const x = xOf(f); if (x - lastX > 44) { c.font = '600 11px ' + FONT; c.textAlign = 'center'; c.fillStyle = '#ff8a8a'; c.fillText(fmtHz(f).replace(' ', ''), x, my + hm - 6); lastX = x; } });
+
+        // โทน
+        const mark = (f, col, label) => {
+            const x = xOf(f); c.strokeStyle = col; c.lineWidth = 1.3; c.beginPath(); c.moveTo(x, my); c.lineTo(x, my + hm); c.moveTo(x, py); c.lineTo(x, py + hp); c.stroke();
+            c.strokeStyle = '#000'; c.fillStyle = col;
+            [yM(toDb(gainAt(f))), yP(wrapDeg(phi2(f))), yP(apTheta(f) * 180 / Math.PI)].forEach((y, i) => { c.beginPath(); c.arc(x, y, 4.5, 0, 7); c.fill(); c.stroke(); });
+            if (label) pill(c, x > W - 120 ? x - 62 : x + 6, my + 30, [{ t: label, col: '#fff', bold: 1 }]);
+        };
+        if (S.src === 'sine') mark(S.freq, '#ffffff', fmtHz(S.freq));
+
+        // เคอร์เซอร์
+        if (respHover !== null && respHover >= L && respHover <= L + w) {
+            const f = fOf(respHover), x = respHover;
+            c.strokeStyle = 'rgba(255,255,255,.4)'; c.lineWidth = 1; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(x, my); c.lineTo(x, my + hm); c.moveTo(x, py); c.lineTo(x, py + hp); c.stroke(); c.setLineDash([]);
+            const db = toDb(gainAt(f)), tot = wrapDeg(phi2(f)), ap = apTheta(f) * 180 / Math.PI;
+            tip(c, W, x, my + 56, [{ t: fmtHz(f), col: '#9aa0aa' }, { t: 'ผลรวม  ' + sgn(db, 1) + ' dB', col: COL.sum }, { t: 'เฟสรวม  ' + sgn(tot) + '°', col: '#d9e0ee' }, { t: 'all-pass  ' + sgn(ap) + '°', col: COL.c2 }]);
+        }
+    }
+
+    // ---------- แผงข้อมูล ----------
+    function updateInfo() {
+        const tau = S.delayMs / 1000, zero = tau < 1e-5 && !apOn();
+        $('delayVal').textContent = S.delayMs.toFixed(2);
+        $('levelVal').textContent = Math.round(S.level * 100);
+        $('freqVal').textContent = Math.round(S.freq);
+        const cm = tau * SPEED * 100;
+        $('stDist').textContent = cm.toFixed(1) + ' cm';
+        $('distNote').textContent = tau < 1e-5 ? 'ไมค์ทั้งสองรับเสียงพร้อมกัน' : `เหมือน Mic 2 อยู่ไกลกว่า Mic 1 ประมาณ ${(cm / 100).toFixed(2)} เมตร`;
+        $('invertBtn').classList.toggle('active', S.inverted);
+        $('invertBtn').textContent = S.inverted ? 'Ø Polarity Inverted (เปิดอยู่)' : 'Ø Invert Polarity (Mic 2)';
+
+        // Notch
+        const nl = notchList(3);
+        if (zero) {
+            $('stNotch').textContent = S.inverted ? 'ทุกความถี่' : 'ไม่มี';
+            $('stNotchN').textContent = S.inverted ? (S.level > 0.999 ? 'หักล้างสนิท' : 'ผลรวมลดลง ' + toDb(1 - S.level).toFixed(1) + ' dB') : 'เสริมกัน +' + toDb(1 + S.level).toFixed(1) + ' dB';
+        } else if (nl.length) {
+            $('stNotch').textContent = fmtHz(nl[0]);
+            let note = nl.length > 1 ? 'ถัดไป: ' + nl.slice(1).map(fmtHz).join(', ') : '';
+            if (S.level < 0.999) note += (note ? ' · ' : '') + 'ลึกแค่ ' + toDb(1 - S.level).toFixed(1) + ' dB';
+            $('stNotchN').textContent = note;
+        } else {
+            const m = minGain();
+            $('stNotch').textContent = 'ไม่มี';
+            $('stNotchN').textContent = 'ต่ำสุด ' + toDb(m.g).toFixed(1) + ' dB @ ' + fmtHz(m.f);
+        }
+        $('phVal').textContent = S.phase.toFixed(1) + '°';
+        $('phHz').textContent = apOn() ? '90° @ ' + fmtHz(phaseCorner(S.phase, FS)) : 'ไม่หมุนเฟส';
+        $('knob').setAttribute('aria-valuenow', S.phase.toFixed(1));
+        drawKnob();
+
+        // เฟส + ระดับที่ความถี่โทน
+        let verdict;
+        if (S.src === 'sine') {
+            const phi = ((-phi2(S.freq) * 180 / Math.PI % 360) + 360) % 360;
+            const db = toDb(gainAt(S.freq));
+            $('stPhase').textContent = phi.toFixed(0) + '°';
+            $('stPhaseN').textContent = phi < 1 || phi > 359 ? 'ตรงเฟสกัน' : Math.abs(phi - 180) < 1 ? 'เฟสตรงข้ามกัน' : 'Mic 2 ตามหลัง Mic 1';
+            $('stLevel').textContent = (db > 0 ? '+' : '') + db.toFixed(1) + ' dB';
+            $('stLevelN').textContent = db > 3 ? 'เสริมกัน' : db < -6 ? 'หักล้างกัน' : 'เทียบกับ Mic 1 ตัวเดียว';
+            if (db > 3) verdict = ['', `ที่ ${fmtHz(S.freq)} สองไมค์เสริมกัน ได้ ${db > 0 ? '+' : ''}${db.toFixed(1)} dB (สูงสุดทฤษฎี +${toDb(1 + S.level).toFixed(1)} dB)`];
+            else if (db < -12) verdict = ['bad', `ที่ ${fmtHz(S.freq)} สองไมค์หักล้างกันเกือบหมด (${db.toFixed(1)} dB) – ลองเลื่อนความถี่หรือ Delay ดู`];
+            else if (db < -3) verdict = ['mid', `ที่ ${fmtHz(S.freq)} เสียงหายไปบางส่วน (${db.toFixed(1)} dB)`];
+            else verdict = ['mid', `ที่ ${fmtHz(S.freq)} ผลรวมใกล้เคียงกับไมค์เดียว (${db.toFixed(1)} dB)`];
+        } else {
+            $('stPhase').textContent = '–'; $('stPhaseN').textContent = 'ใช้ได้กับโหมด Sine (แหล่งเสียงนี้มีหลายความถี่)';
+            $('stLevel').textContent = '–'; $('stLevelN').textContent = 'ดูกราฟ Comb Filter ด้านล่าง';
+            if (zero && S.inverted && S.level > 0.999) verdict = ['bad', 'หักล้างกันทุกความถี่ – เสียงรวมเงียบสนิท'];
+            else if (zero && !S.inverted) verdict = ['', `ตรงเฟสกัน ผลรวมดังขึ้น +${toDb(1 + S.level).toFixed(1)} dB ทุกความถี่`];
+            else if (tau < 1e-5) verdict = ['mid', 'all-pass หมุนเฟส Mic 2 ไม่เท่ากันทุกความถี่ (ต่ำหมุนน้อย สูงหมุนมาก) ผลรวมจึงเปลี่ยนตามย่านความถี่ – ดูกราฟขวา'];
+            else verdict = ['mid', 'เสียงมีหลายความถี่: บางย่านเสริม บางย่านหาย → ได้ยินเป็นเสียง "กลวง / เหมือนฟลานเจอร์" (Comb Filter)'];
+        }
+        const v = $('verdict'); v.className = 'verdict ' + verdict[0]; v.textContent = verdict[1];
+        $('freqBox').style.display = S.src === 'sine' ? '' : 'none';
+        requestDraw();
+    }
+    let drawPending = false;           // รวมการวาดใหม่เป็นครั้งเดียวต่อเฟรม (ตอนลากปุ่มจะไม่กินเครื่องจนเสียงสะดุด)
+    function requestDraw() {
+        if (drawPending) return; drawPending = true;
+        requestAnimationFrame(() => { drawPending = false; drawScope(); drawResp(); });
+    }
+
+    // ---------- Audio ----------
+    let ctx, srcBus, delayNode, apHolder, apNode, apMode, polGain, m1, m2, master, osc, noiseSrc, snareTimer;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    let silentEl = null;
+    function unlockIOS() {             // iOS: เสียง Web Audio ถูกปิดโดยสวิตช์โหมดเงียบ — ขอ audio session แบบ playback
+        try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+        if (silentEl) return;
+        try {
+            const n = 4410, b = new DataView(new ArrayBuffer(44 + n * 2));
+            const str = (o, t) => [...t].forEach((ch, i) => b.setUint8(o + i, ch.charCodeAt(0)));
+            str(0, 'RIFF'); b.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true);
+            b.setUint32(24, 44100, true); b.setUint32(28, 88200, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); str(36, 'data'); b.setUint32(40, n * 2, true);
+            silentEl = new Audio(URL.createObjectURL(new Blob([b.buffer], { type: 'audio/wav' })));
+            silentEl.loop = true; silentEl.setAttribute('playsinline', ''); silentEl.play().catch(() => {});
+        } catch (e) {}
+    }
+    function initAudio() {
+        if (ctx) return;
+        if (isIOS) unlockIOS();
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        master = ctx.createGain(); master.gain.value = 0.2; master.connect(ctx.destination);
+        srcBus = ctx.createGain();
+        m1 = ctx.createGain(); m2 = ctx.createGain();
+        delayNode = ctx.createDelay(1.0); apHolder = ctx.createGain(); polGain = ctx.createGain();
+        srcBus.connect(m1).connect(master);
+        srcBus.connect(delayNode).connect(apHolder).connect(polGain).connect(m2).connect(master);
+        applyAudio(true);
+        setupAP();
+    }
+    // all-pass อันดับ 1 รันต่อเนื่องตลอด แล้ว crossfade กับสัญญาณตรง (m) — เปิด/ปิดหรือหมุนผ่าน 0° จึงไม่มีรอยต่อ (ไม่คลิก)
+    // ทั้งสัมประสิทธิ์ a และ m ถูกทำให้นุ่ม (smoothing ~15 ms) ทุก sample
+    const WORKLET = `class AP extends AudioWorkletProcessor{constructor(){super();this.a=0.99;this.t=0.99;this.m=0;this.mt=0;this.s=0;
+        this.port.onmessage=e=>{this.t=e.data.a;this.mt=e.data.on?1:0;};}
+        process(i,o){const x=i[0][0],y=o[0][0];if(!x)return true;
+        for(let n=0;n<x.length;n++){this.a+=(this.t-this.a)*0.0015;this.m+=(this.mt-this.m)*0.0015;
+        const v=this.a*x[n]+this.s;this.s=x[n]-this.a*v;y[n]=x[n]+this.m*(v-x[n]);}return true;}}
+        registerProcessor('ap1',AP);`;
+    function setupAP() {
+        const useIIR = () => { apMode = 'iir'; applyAP(); };
+        const load = url => ctx.audioWorklet.addModule(url);
+        if (ctx.audioWorklet && window.Blob) {
+            load(URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' })))
+                .catch(() => load('data:text/javascript;charset=utf-8,' + encodeURIComponent(WORKLET)))   // บาง browser ไม่ให้ใช้ blob: จากไฟล์ในเครื่อง
+                .then(() => {
+                    apNode = new AudioWorkletNode(ctx, 'ap1', { channelCount: 1, channelCountMode: 'explicit', outputChannelCount: [1] });
+                    apHolder.disconnect(); apHolder.connect(apNode).connect(polGain);
+                    apMode = 'worklet'; applyAP();
+                }).catch(useIIR);
+        } else useIIR();
+    }
+    // สำรอง (ถ้า AudioWorklet ใช้ไม่ได้): IIRFilterNode สองชุดสลับกัน crossfade 30 ms + จำกัดความถี่การเปลี่ยน
+    let iirSlots = null, iirCur = 0, dryG = null, iirLast = 0, iirTimer = null;
+    function applyIIR(a) {
+        const now = performance.now();
+        if (now - iirLast < 45) { clearTimeout(iirTimer); iirTimer = setTimeout(applyAP, 45); return; }
+        iirLast = now;
+        const t = ctx.currentTime, X = 0.01;
+        if (!iirSlots) {
+            iirSlots = [0, 1].map(() => { const g = ctx.createGain(); g.gain.value = 0; g.connect(polGain); return { g, f: null }; });
+            dryG = ctx.createGain(); apHolder.disconnect(); apHolder.connect(dryG).connect(polGain);
+        }
+        const prev = iirSlots[iirCur], next = iirSlots[1 - iirCur];
+        dryG.gain.setTargetAtTime(apOn() ? 0 : 1, t, X);
+        if (apOn()) {
+            if (next.f) next.f.disconnect();
+            next.f = ctx.createIIRFilter([a, 1], [1, a]); apHolder.connect(next.f).connect(next.g);
+            next.g.gain.setTargetAtTime(1, t, X); prev.g.gain.setTargetAtTime(0, t, X);
+            const old = prev.f; if (old) setTimeout(() => { if (prev.f === old && prev.g.gain.value < 0.001) { old.disconnect(); prev.f = null; } }, 250);
+            iirCur = 1 - iirCur;
+        } else { prev.g.gain.setTargetAtTime(0, t, X); }
+    }
+    function applyAP() {
+        if (!ctx || !apMode) return;
+        const sr = ctx.sampleRate, fc = Math.min(phaseCorner(S.phase, FS), sr / 2 - 100);
+        const k = Math.tan(Math.PI * fc / sr), a = (k - 1) / (k + 1);
+        if (apMode === 'worklet') apNode.port.postMessage({ a, on: apOn() });
+        else applyIIR(a);
+    }
+    function applyAudio(immediate) {
+        if (!ctx) return;
+        const t = ctx.currentTime, k = immediate ? 0.001 : 0.02;
+        delayNode.delayTime.setTargetAtTime(S.delayMs / 1000, t, k);
+        polGain.gain.setTargetAtTime(S.level * pol(), t, k);
+        m1.gain.setTargetAtTime(S.listen === '2' ? 0 : 1, t, 0.01);
+        m2.gain.setTargetAtTime(S.listen === '1' ? 0 : 1, t, 0.01);
+        if (osc) osc.frequency.setTargetAtTime(S.freq, t, 0.02);
+    }
+    function hitSnare() {
+        const time = ctx.currentTime;
+        const o = ctx.createOscillator(), oe = ctx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(250, time); o.frequency.exponentialRampToValueAtTime(100, time + 0.1);
+        oe.gain.setValueAtTime(1, time); oe.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+        o.connect(oe).connect(srcBus);
+        const size = Math.floor(ctx.sampleRate * 0.2), buf = ctx.createBuffer(1, size, ctx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
+        const ns = ctx.createBufferSource(); ns.buffer = buf;
+        const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1000;
+        const ne = ctx.createGain();
+        ne.gain.setValueAtTime(1, time); ne.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+        ns.connect(hp).connect(ne).connect(srcBus);
+        o.start(time); ns.start(time); o.stop(time + 0.25); ns.stop(time + 0.25);
+    }
+    function startSource() {
+        initAudio(); if (ctx.state === 'suspended') ctx.resume();
+        const t = ctx.currentTime;
+        if (S.src === 'sine') {
+            osc = ctx.createOscillator(); osc.type = 'sine'; osc.frequency.value = S.freq;
+            const gn = ctx.createGain(); gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(0.8, t + 0.05);
+            osc.connect(gn).connect(srcBus); osc.start(); osc._gn = gn;
+        } else if (S.src === 'noise') {
+            const size = ctx.sampleRate * 2, buf = ctx.createBuffer(1, size, ctx.sampleRate), d = buf.getChannelData(0);
+            for (let i = 0; i < size; i++) d[i] = Math.random() * 2 - 1;
+            noiseSrc = ctx.createBufferSource(); noiseSrc.buffer = buf; noiseSrc.loop = true;
+            const gn = ctx.createGain(); gn.gain.value = 0.5; noiseSrc.connect(gn).connect(srcBus); noiseSrc.start(); noiseSrc._gn = gn;
+        } else {
+            hitSnare(); snareTimer = setInterval(hitSnare, 800);
+        }
+    }
+    function stopSource() {
+        const t = ctx ? ctx.currentTime : 0;
+        if (osc) { osc._gn.gain.setTargetAtTime(0, t, 0.02); osc.stop(t + 0.15); osc = null; }
+        if (noiseSrc) { noiseSrc._gn.gain.setTargetAtTime(0, t, 0.02); noiseSrc.stop(t + 0.15); noiseSrc = null; }
+        if (snareTimer) { clearInterval(snareTimer); snareTimer = null; }
+    }
+    function setPlaying(on) {
+        S.playing = on; on ? startSource() : stopSource();
+        if (silentEl) { on ? silentEl.play().catch(() => {}) : silentEl.pause(); }
+        $('playBtn').classList.toggle('on', on);
+        $('playBtn').textContent = on ? '■ หยุดเสียง' : '▶ เล่นเสียง';
+    }
+
+    // ---------- Events ----------
+    function setSeg(segId, attr, val) {
+        document.querySelectorAll('#' + segId + ' button').forEach(b => b.classList.toggle('sel', b.dataset[attr] === String(val)));
+    }
+    $('playBtn').onclick = () => setPlaying(!S.playing);
+    $('srcSeg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        const was = S.playing; if (was) setPlaying(false);
+        S.src = b.dataset.src; setSeg('srcSeg', 'src', S.src);
+        if (was) setPlaying(true);
+        updateInfo();
+    };
+    $('listenSeg').onclick = e => {
+        const b = e.target.closest('button'); if (!b) return;
+        S.listen = b.dataset.l; setSeg('listenSeg', 'l', S.listen); applyAudio();
+    };
+    $('freqSlider').oninput = e => { S.freq = sliderToFreq(+e.target.value); applyAudio(); updateInfo(); };
+    $('delaySlider').oninput = e => { S.delayMs = +e.target.value; applyAudio(); updateInfo(); };
+    $('levelSlider').oninput = e => { S.level = +e.target.value / 100; applyAudio(); updateInfo(); };
+    $('invertBtn').onclick = () => { S.inverted = !S.inverted; applyAudio(); updateInfo(); };
+    // ---------- ปุ่มหมุน PHASE ----------
+    const knob = $('knob');
+    function drawKnob() {
+        const dpr = window.devicePixelRatio || 1, W = 84, H = 84;
+        if (knob.width !== W * dpr) { knob.width = W * dpr; knob.height = H * dpr; }
+        const c = knob.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
+        const cx = W / 2, cy = H / 2, r = 27, a0 = Math.PI * 0.75, sweep = Math.PI * 1.5;
+        const v = S.phase / 180, ang = a0 + sweep * v, col = cssVar('--c2');
+        c.lineCap = 'round';
+        c.lineWidth = 4; c.strokeStyle = '#3a3d44'; c.beginPath(); c.arc(cx, cy, r + 9, a0, a0 + sweep); c.stroke();
+        if (v > 0) { c.strokeStyle = col; c.beginPath(); c.arc(cx, cy, r + 9, a0, ang); c.stroke(); }
+        const g = c.createRadialGradient(cx - 8, cy - 10, 2, cx, cy, r);
+        g.addColorStop(0, '#5a5e68'); g.addColorStop(1, '#25272b');
+        c.fillStyle = g; c.beginPath(); c.arc(cx, cy, r, 0, 7); c.fill();
+        c.lineWidth = 1; c.strokeStyle = '#0d0d0f'; c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,.12)';                         // ลายหยักขอบปุ่ม
+        for (let i = 0; i < 48; i++) { const t = i / 48 * 2 * Math.PI; c.beginPath(); c.moveTo(cx + Math.cos(t) * (r - 3), cy + Math.sin(t) * (r - 3)); c.lineTo(cx + Math.cos(t) * r, cy + Math.sin(t) * r); c.stroke(); }
+        c.lineWidth = 3.5; c.strokeStyle = col;
+        c.beginPath(); c.moveTo(cx + Math.cos(ang) * r * 0.35, cy + Math.sin(ang) * r * 0.35); c.lineTo(cx + Math.cos(ang) * r * 0.85, cy + Math.sin(ang) * r * 0.85); c.stroke();
+    }
+    function setPhase(v) {
+        S.phase = Math.round(Math.min(180, Math.max(0, v)) * 10) / 10;
+        applyAP(); updateInfo();
+    }
+    let drag = null;
+    knob.addEventListener('pointerdown', e => { knob.setPointerCapture(e.pointerId); knob.focus(); drag = { y: e.clientY, v: S.phase }; e.preventDefault(); });
+    knob.addEventListener('pointermove', e => { if (drag) setPhase(drag.v + (drag.y - e.clientY) * (e.shiftKey ? 0.2 : 1)); });
+    knob.addEventListener('pointerup', () => { drag = null; });
+    knob.addEventListener('pointercancel', () => { drag = null; });
+    knob.addEventListener('dblclick', () => setPhase(0));
+    knob.addEventListener('wheel', e => { e.preventDefault(); setPhase(S.phase + (e.deltaY < 0 ? 1 : -1) * (e.shiftKey ? 0.1 : 1)); }, { passive: false });
+    knob.addEventListener('keydown', e => {
+        const step = e.shiftKey ? 10 : 1;
+        if (e.key === 'ArrowUp' || e.key === 'ArrowRight') setPhase(S.phase + step);
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') setPhase(S.phase - step);
+        else if (e.key === 'Home') setPhase(0); else if (e.key === 'End') setPhase(180); else return;
+        e.preventDefault();
+    });
+
+    $('winSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.win = +b.dataset.w; setSeg('winSeg', 'w', S.win); drawScope(); };
+    $('viewSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; S.view = b.dataset.v; setSeg('viewSeg', 'v', S.view); drawScope(); };
+    const hover = (id, set, draw) => {
+        const cv = $(id);
+        cv.addEventListener('pointermove', e => { set(e.offsetX); draw(); });
+        cv.addEventListener('pointerleave', e => { if (e.pointerType === 'touch') return; set(null); draw(); });
+    };
+    hover('scope', x => { scopeHover = x; }, drawScope);
+    hover('resp', x => { respHover = x; }, drawResp);
+    window.addEventListener('resize', () => { drawScope(); drawResp(); });
+    if (window.ResizeObserver) document.querySelectorAll('.cv').forEach(el => new ResizeObserver(() => { drawScope(); drawResp(); }).observe(el));
+    const theory = $('theory');
+    $('theoryBtn').onclick = () => theory.classList.add('open');
+    $('theoryClose').onclick = () => theory.classList.remove('open');
+    theory.onclick = e => { if (e.target === theory) theory.classList.remove('open'); };
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') theory.classList.remove('open'); });
+    if (isIOS) $('iosHint').hidden = false;
+    document.addEventListener('visibilitychange', () => { if (document.hidden && S.playing) setPlaying(false); });
+    updateInfo();
+})();
+</script>
+</body>
+</html>
